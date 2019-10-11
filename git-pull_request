@@ -7,15 +7,24 @@ import requests
 from optparse import OptionParser
 from subprocess import Popen, PIPE
 
+try:
+    from spawn import get_editor_output
+except ImportError:
+    get_editor_output = None
+    pass
 
-GITHUB_PULL_URL = ("%s/repos/Demonware/webzone/pulls")
+GITHUB_PULL_URL = ("%s/repos/%s/pulls")
 
 
 def get_curr_branch_name():
-    p = Popen(["git", "rev-parse", "--abbrev-ref", "HEAD"], stdout=PIPE)
+    p = Popen(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=os.getcwd(), stdout=PIPE)
     curr_branch_name, _ = p.communicate()
     return curr_branch_name.strip()
 
+def get_repo_name():
+    p = Popen(["basename $(git rev-parse --show-toplevel)"], cwd=os.getcwd(), stdout=PIPE, shell=True)
+    repo_name, _ = p.communicate()
+    return repo_name.strip()
 
 def retrieve_config(filename):
     # gets home directory of user
@@ -32,12 +41,12 @@ def retrieve_config(filename):
     return config
 
 
-def create_pull_request(options, user, token,
+def create_pull_request(options, user, token, title,
                         github_url='https://api.github.com'):
     headers = {"Authorization": "token %s" % token,
             'Content-Type': 'application/json'}
     data = {
-            "title": options.title,
+            "title": title,
             "base": options.base,
             "head": options.head
     }
@@ -51,21 +60,40 @@ def create_pull_request(options, user, token,
     return response.json()
 
 
+def ensure_following_options(options, check_names):
+    for name in check_names:
+        if not getattr(options, name, False):
+            raise Exception("You must provide a %s" % name)
+
+
+def if_not_then_try_spawn(title):
+    if title:
+        return title
+    if get_editor_output:
+        title = get_editor_output(
+                initial_message="Put pull request title here")
+        return title
+    else:
+        raise Exception("You must provide a title")
+
+
 if __name__ == "__main__":
-    parser = OptionParser()
+    usage = "Usage: %prog [options]"
+    parser = OptionParser(usage=usage)
     parser.add_option('-t', '--title', dest='title',
             help='title for pull request')
     parser.add_option('--body', dest='body',
-            help='title for pull request')
+            help='body for pull request')
     parser.add_option('-b', '--base', dest='base', default='master',
             help='base to diff against')
     parser.add_option('--head', dest='head',
             default=get_curr_branch_name(), help='head of feature branch')
     (options, args) = parser.parse_args()
-
+    title = if_not_then_try_spawn(options.title)
+    ensure_following_options(options, ["base", "head"])
     config = retrieve_config(".githubcredentials")
     token = config["token"]
     user = config["user"]
     github_url = config["github_url"]
-    pull_body = create_pull_request(options, user, token, github_url)
-    print pull_body["url"]
+    pull_body = create_pull_request(options, user, token, title, github_url)
+    print pull_body["html_url"]
