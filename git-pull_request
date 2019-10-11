@@ -13,7 +13,7 @@ except ImportError:
     get_editor_output = None
     pass
 
-GITHUB_PULL_URL = ("%s/repos/%s/pulls")
+GITHUB_PULL_URL = ("%s/repos/%s/%s/pulls")
 
 
 def get_curr_branch_name():
@@ -52,7 +52,8 @@ def create_pull_request(options, user, token, title,
     }
     if options.body:
         data["body"] = options.body
-    response = requests.post(GITHUB_PULL_URL % github_url, headers=headers,
+    url = GITHUB_PULL_URL % (github_url, options.owner, options.repo)
+    response = requests.post(url, headers=headers,
                              data=json.dumps(data), verify=False)
     if response.status_code not in range(200, 299):
         raise Exception("Response %d: %s" % (response.status_code,
@@ -82,14 +83,19 @@ if __name__ == "__main__":
     parser = OptionParser(usage=usage)
     parser.add_option('-t', '--title', dest='title',
             help='title for pull request')
+    parser.add_option('-o', '--owner', dest='owner',
+            help='owner of target repo for pull request')
     parser.add_option('--body', dest='body',
             help='body for pull request')
     parser.add_option('-b', '--base', dest='base', default='master',
             help='base to diff against')
     parser.add_option('--head', dest='head',
             default=get_curr_branch_name(), help='head of feature branch')
+    parser.add_option('--repo', dest='repo',
+            default=get_repo_name(), help='repo for pull request')
     (options, args) = parser.parse_args()
     title = if_not_then_try_spawn(options.title)
+    owner = if_not_then_try_spawn(options.owner)
     ensure_following_options(options, ["base", "head"])
     config = retrieve_config(".githubcredentials")
     token = config["token"]
